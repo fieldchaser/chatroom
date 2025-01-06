@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Chat</title>
+    <style>
+        /* Reset some default styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Background gradient */
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(45deg, #ff6b6b, #f0c27b, #4ac29b);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+        }
+
+        @keyframes gradientBG {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        /* Chat container */
+        .chat-container {
+            width: 100%;
+            max-width: 600px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        h2 {
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 28px;
+        }
+
+        /* Username input and login button */
+        #username {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        #login-btn {
+            background-color: #4ac29b;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #login-btn:hover {
+            background-color: #45b087;
+        }
+
+        /* Chat area */
+        #chat-section {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #user-list-container {
+            width: 100%;
+            margin-bottom: 15px;
+        }
+
+        #user-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            font-size: 16px;
+            text-align: center;
+        }
+
+        #messages {
+            width: 100%;
+            height: 300px;
+            overflow-y: scroll;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #f9f9f9;
+            margin-bottom: 15px;
+            max-height: 300px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        #messages .message {
+            margin-bottom: 12px;
+        }
+
+        #messages .message.user {
+            font-weight: bold;
+            color: #4ac29b;
+        }
+
+        #messages .message.content {
+            margin-left: 10px;
+        }
+
+        /* Input and send button */
+        #message-input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            margin-bottom: 15px;
+            resize: none;
+        }
+
+        #send-btn {
+            background-color: #4ac29b;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        #send-btn:hover {
+            background-color: #45b087;
+        }
+
+        /* Small screen adjustments */
+        @media (max-width: 600px) {
+            .chat-container {
+                width: 90%;
+            }
+
+            #messages {
+                height: 200px;
+            }
+
+            #message-input {
+                height: 80px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="chat-container">
+    <h2>WebSocket Chat</h2>
+    <div>
+        <label for="username">Enter your username:</label>
+        <input type="text" id="username" placeholder="Username" />
+        <button id="login-btn">Login</button>
+    </div>
+
+    <div id="chat-section">
+        <h3>Chat Room</h3>
+        <div id="user-list-container">
+            <h4>Users:</h4>
+            <ul id="user-list"></ul>
+        </div>
+        <div id="messages"></div>
+        <textarea id="message-input" placeholder="Type your message here..." rows="3"></textarea>
+        <button id="send-btn">Send</button>
+    </div>
+</div>
+
+<script>
+    const wsUrl = 'ws://127.0.0.1:8080/ws'; // WebSocket URL
+    let ws;
+    let username = '';
+
+    // DOM elements
+    const loginButton = document.getElementById('login-btn');
+    const usernameInput = document.getElementById('username');
+    const chatSection = document.getElementById('chat-section');
+    const messageInput = document.getElementById('message-input');
+    const sendButton = document.getElementById('send-btn');
+    const userListContainer = document.getElementById('user-list');
+    const messagesContainer = document.getElementById('messages');
+
+    // Handle login button click
+    loginButton.addEventListener('click', () => {
+        username = usernameInput.value.trim();
+        if (username) {
+            connectWebSocket(username);
+        } else {
+            alert("Please enter a username");
+        }
+    });
+
+    // Connect to WebSocket
+    function connectWebSocket(user) {
+        ws = new WebSocket(wsUrl);
+        ws.onopen = () => {
+            const loginData = {
+                type: 'login',
+                content: user
+            };
+            ws.send(JSON.stringify(loginData));
+            chatSection.style.display = 'block';
+            usernameInput.disabled = true;
+            loginButton.disabled = true;
+        };
+
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            handleIncomingMessage(data);
+        };
+
+        ws.onclose = () => {
+            console.log("Connection closed");
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+    }
+
+    // Handle incoming messages
+    function handleIncomingMessage(data) {
+        switch (data.type) {
+            case 'handshake':
+                updateUserList(data.userList);
+                break;
+            case 'login':
+            case 'user':
+            case 'logout':
+                appendMessage(data);
+                break;
+            default:
+                console.log('Unknown message type', data);
+        }
+    }
+
+    // Update the user list
+    function updateUserList(userList) {
+        userListContainer.innerHTML = '';
+        userList.forEach(user => {
+            const li = document.createElement('li');
+            li.textContent = user;
+            userListContainer.appendChild(li);
+        });
+    }
+
+    // Append message to the chat
+    function appendMessage(data) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('message');
+
+        if (data.type === 'login') {
+            messageDiv.classList.add('user');
+            messageDiv.textContent = `${data.content} has joined the chat.`;
+        } else if (data.type === 'logout') {
+            messageDiv.classList.add('user');
+            messageDiv.textContent = `${data.content} has left the chat.`;
+        } else {
+            messageDiv.classList.add('content');
+            messageDiv.innerHTML = `<span class="user">${data.from}:</span> ${data.content}`;
+        }
+
+        messagesContainer.appendChild(messageDiv);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight; // Scroll to the bottom
+    }
+
+    // Handle send message
+    sendButton.addEventListener('click', () => {
+        const message = messageInput.value.trim();
+        if (message && ws && ws.readyState === WebSocket.OPEN) {
+            const messageData = {
+                type: 'user',
+                from: username,
+                content: message
+            };
+            ws.send(JSON.stringify(messageData));
+            messageInput.value = ''; // Clear input after sending
+        }
+    });
+
+    // Cleanup on page unload
+    window.onbeforeunload = () => {
+        if (ws) {
+            const logoutData = {
+                type: 'logout',
+                content: username
+            };
+            ws.send(JSON.stringify(logoutData));
+        }
+    };
+</script>
+
+</body>
+</html>
